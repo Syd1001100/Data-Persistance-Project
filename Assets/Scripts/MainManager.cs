@@ -3,29 +3,45 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
+using System.IO;
+using TMPro;
 
 public class MainManager : MonoBehaviour
 {
+    
     public Brick BrickPrefab;
     public int LineCount = 6;
     public Rigidbody Ball;
 
     public Text ScoreText;
+
+    //Fields for display the player info
+    public Text CurrentPlayerName;
+    public Text BestPlayerNameAndScore;
+
     public GameObject GameOverText;
-    
+
     private bool m_Started = false;
     private int m_Points;
-    
+
     private bool m_GameOver = false;
 
-    
+    //Static variables for holding the best player data
+    private static int BestScore;
+    private static string BestPlayer;
+
+
+    private void Awake()
+    {
+        LoadGameRank();
+    }
     // Start is called before the first frame update
     void Start()
     {
         const float step = 0.6f;
         int perLine = Mathf.FloorToInt(4.0f / step);
-        
-        int[] pointCountArray = new [] {1,1,2,2,5,5};
+
+        int[] pointCountArray = new[] { 1, 1, 2, 2, 5, 5 };
         for (int i = 0; i < LineCount; ++i)
         {
             for (int x = 0; x < perLine; ++x)
@@ -36,6 +52,10 @@ public class MainManager : MonoBehaviour
                 brick.onDestroyed.AddListener(AddPoint);
             }
         }
+
+        CurrentPlayerName.text = PlayerDataHandle.Instance.PlayerName;
+
+        SetBestPlayer();
     }
 
     private void Update()
@@ -65,12 +85,97 @@ public class MainManager : MonoBehaviour
     void AddPoint(int point)
     {
         m_Points += point;
+        PlayerDataHandle.Instance.Score = m_Points;
         ScoreText.text = $"Score : {m_Points}";
     }
 
     public void GameOver()
     {
         m_GameOver = true;
+        CheckBestPlayer();
         GameOverText.SetActive(true);
+    }
+
+    private void CheckBestPlayer()
+    {
+        int CurrentScore = PlayerDataHandle.Instance.Score;
+
+        if (CurrentScore > BestScore)
+        {
+            BestPlayer = PlayerDataHandle.Instance.PlayerName;
+            BestScore = CurrentScore;
+
+            BestPlayerNameAndScore.text = $"Best Score : {BestPlayer} : {BestScore}";
+
+            int currentScore = PlayerDataHandle.Instance.Score;
+
+            // Add current score to the high scores list
+            var newPlayerScore = new PlayerScore
+            {
+                PlayerName = PlayerDataHandle.Instance.PlayerName,
+                Score = currentScore
+            };
+
+            SaveData data = LoadGameRank();
+
+            // Insert the new score and sort
+            data.HighScores.Add(newPlayerScore);
+            data.HighScores.Sort((x, y) => y.Score.CompareTo(x.Score)); // Sort descending
+
+            // Keep only the top 5 scores
+            if (data.HighScores.Count > 5)
+            {
+                data.HighScores.RemoveRange(5, data.HighScores.Count - 5);
+            }
+
+            SaveGameRank(data);
+        }
+    }
+
+    private void SetBestPlayer()
+    {
+        if (BestPlayer == null && BestScore == 0)
+        {
+            BestPlayerNameAndScore.text = "";
+        }
+        else
+        {
+            BestPlayerNameAndScore.text = $"Best Score : {CurrentPlayerName}: {BestScore}";
+        }
+
+    }
+
+    
+    public void SaveGameRank(SaveData data)
+    {
+        string json = JsonUtility.ToJson(data);
+        File.WriteAllText(Application.persistentDataPath + "/savefile.json", json);
+    }
+
+    public SaveData LoadGameRank()
+    {
+        string path = Application.persistentDataPath + "/savefile.json";
+        SaveData data = new SaveData();
+
+        if (File.Exists(path))
+        {
+            string json = File.ReadAllText(path);
+            data = JsonUtility.FromJson<SaveData>(json);
+        }
+
+        return data;
+    }
+
+    [System.Serializable]
+    public class SaveData
+    {
+        public List<PlayerScore> HighScores = new List<PlayerScore>();
+    }
+
+    [System.Serializable]
+    public class PlayerScore
+    {
+        public string PlayerName;
+        public int Score;
     }
 }
